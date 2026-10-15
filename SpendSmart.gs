@@ -218,11 +218,23 @@ function installerDemandesClaude() {
 }
 
 function traiterDemandesClaude() {
-  const src = dossier_('Spend Smart - Demandes Claude');
-  const dest = dossier_('Spend Smart - Demandes traitées');
-  const it = src.getFiles();
-  while (it.hasNext()) {
-    const f = it.next();
+  const verrou = LockService.getUserLock();       // une seule exécution à la fois
+  if (!verrou.tryLock(1000)) return;
+  try {
+    const src = dossier_('Spend Smart - Demandes Claude');
+    const dest = dossier_('Spend Smart - Demandes traitées');
+    const fichiers = [];
+    const it = src.getFiles();
+    while (it.hasNext()) fichiers.push(it.next());
+    fichiers.forEach(f => traiterUneDemande_(f, dest));
+  } finally {
+    verrou.releaseLock();
+  }
+}
+
+function traiterUneDemande_(f, dest) {
+  {
+    f.moveTo(dest);                                // retirée tout de suite : jamais traitée deux fois
     const nom = f.getName().replace(/\.json$/i, '');
     let res;
     try {
@@ -235,7 +247,6 @@ function traiterDemandesClaude() {
       res = { ok: false, erreur: e.message };
     }
     dest.createFile(nom + '_RESULTAT.json', JSON.stringify(res, null, 2), 'application/json');
-    f.moveTo(dest);
   }
 }
 
