@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Spend Smart</title>
+<meta name="theme-color" content="#1F4E79">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+  :root{--bleu:#1F4E79;--vert:#2F5D45;--orange:#E69138;--fond:#F4F6F9;--carte:#fff;--texte:#1B2430;--gris:#5B6573;--filet:#D5DCE4}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--fond);color:var(--texte);
+       padding:16px 16px calc(24px + env(safe-area-inset-bottom))}
+  header{display:flex;align-items:center;gap:10px;margin:4px 0 16px}
+  header img{width:36px;height:36px;border-radius:9px}
+  header h1{font-size:21px;margin:0}
+  header small{display:block;color:var(--gris);font-size:13px;font-weight:400}
+  .grille{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .tuile{border:0;border-radius:18px;padding:18px 12px;min-height:128px;display:flex;flex-direction:column;align-items:center;
+         justify-content:center;gap:8px;font:inherit;font-size:16px;font-weight:650;color:#fff;cursor:pointer;text-align:center;line-height:1.25}
+  .tuile .ico{font-size:36px;line-height:1}
+  .tuile:active{transform:scale(.97)}
+  .tuile:disabled{opacity:.55}
+  .t1{background:var(--vert)}.t2{background:#3B7D5A}.t3{background:var(--orange)}.t4{background:var(--bleu)}
+  #res{white-space:pre-wrap;font-size:15px;line-height:1.5;background:var(--carte);border:1px solid var(--filet);border-radius:14px;
+       padding:14px;margin:14px 0 0;display:none}
+  .panneau{background:var(--carte);border:1px solid var(--filet);border-radius:16px;padding:16px;margin-top:14px;display:none}
+  .panneau h2{font-size:17px;margin:0 0 6px}
+  label{display:block;font-size:14px;margin:12px 0 4px;color:var(--gris)}
+  input,select{width:100%;padding:12px;font-size:16px;border:1px solid #C9D2DC;border-radius:10px;background:#fff;color:var(--texte)}
+  .btn{display:block;width:100%;border:0;border-radius:12px;padding:14px;font:inherit;font-size:16px;font-weight:650;text-align:center;
+       text-decoration:none;cursor:pointer;margin-top:14px}
+  .orange{background:var(--orange);color:#fff}.bleu{background:var(--bleu);color:#fff}.clair{background:#E8EEF5;color:var(--bleu)}
+  .total{font-size:28px;font-weight:750;margin:2px 0}
+  .ligne{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid #EEF1F4;font-size:14px}
+  .ligne b{white-space:nowrap}
+  .ligne .q{color:var(--gris);font-size:13px}
+  .pastille{display:inline-block;font-size:11px;border-radius:6px;padding:1px 6px;margin-left:4px}
+  .doublon{background:#F4CCCC;color:#8A1C1C}.verifier{background:#FFF2CC;color:#7A5B00}
+  .liens{display:flex;gap:16px;justify-content:center;margin-top:18px;font-size:14px}
+  .liens a,.liens button{color:var(--bleu);background:none;border:0;font:inherit;text-decoration:underline;cursor:pointer;padding:0}
+  #config{display:none}
+  .attente{display:inline-block;width:16px;height:16px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;
+           animation:t .8s linear infinite;vertical-align:-3px;margin-right:6px}
+  @keyframes t{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<header>
+  <img src="icon-192.png" alt="">
+  <h1>Spend Smart<small>Dépenses en espèces · Smartdesignforyou</small></h1>
+</header>
+
+<div class="grille" id="grille">
+  <button class="tuile t1" id="b1" onclick="ouvrir('fScan')"><span class="ico">📷</span>Scanner une facture</button>
+  <button class="tuile t2" id="b2" onclick="ouvrir('fCapt')"><span class="ico">🖼️</span>Capture / photo de la galerie</button>
+  <button class="tuile t3" id="b3" onclick="afficher('pSans')"><span class="ico">✍️</span>Dépense sans reçu</button>
+  <button class="tuile t4" id="b4" onclick="resume()"><span class="ico">📊</span>Mes dépenses du mois</button>
+</div>
+<input type="file" id="fScan" accept="image/*" capture="environment" hidden onchange="envoyerFichiers(this.files,'b1');this.value=''">
+<input type="file" id="fCapt" accept="image/*" multiple hidden onchange="envoyerFichiers(this.files,'b2');this.value=''">
+
+<div id="res"></div>
+
+<div class="panneau" id="pSans">
+  <h2>✍️ Dépense en espèces sans reçu</h2>
+  <label for="date">Date</label><input type="date" id="date">
+  <label for="fournisseur">Fournisseur / lieu</label><input id="fournisseur" placeholder="ex. Parking Port-Louis">
+  <label for="description">Description *</label><input id="description" placeholder="ex. Parking livraison client">
+  <label for="categorie">Catégorie</label><select id="categorie"></select>
+  <label for="montant">Montant payé (Rs) *</label><input id="montant" type="number" inputmode="decimal" step="0.01" min="0">
+  <button class="btn orange" id="bA" onclick="ajouter()">Ajouter la dépense</button>
+</div>
+
+<div class="panneau" id="pResume"></div>
+
+<div class="panneau" id="config">
+  <h2>🔑 Première ouverture</h2>
+  <p style="margin:0;color:var(--gris);font-size:14px;line-height:1.5">Ouvre la page Spend Smart (lien Google) et touche
+    <b>📲 Installer l'app sur ce téléphone</b> : l'app se configure toute seule.</p>
+</div>
+
+<div class="liens">
+  <button onclick="traiterDrive()">Traiter le dossier Drive</button>
+  <a id="lienTableau" href="#" target="_blank" rel="noopener">Ouvrir le tableau</a>
+</div>
+
+<script>
+var API_DEFAUT = 'https://script.google.com/macros/s/AKfycbzLvp065hwYgoAYhL7LfGDe4NljYYwT0yiX-IBFvqnP9F1hXaIPuJS-3vgC9RmpYvr1/exec';
+var CATS = ['Achat marchandises','Fret & transport','Douane & taxes import','Carburant','Publicité & marketing','Loyer & charges',
+  'Électricité / eau / internet','Téléphone','Fournitures & petit matériel','Entretien & réparations','Honoraires (comptable, avocat…)',
+  'Banque & frais financiers','Repas & déplacements','Salaires & sous-traitance','Logiciels & abonnements','Autre'];
+
+function lsGet(k){try{return localStorage.getItem(k)||'';}catch(e){return '';}}
+function lsSet(k,v){try{localStorage.setItem(k,v);}catch(e){}}
+
+// Configuration reçue par le lien d'installation (#k=…&u=…), jamais envoyée au serveur GitHub
+(function(){
+  if(location.hash.length>1){
+    var p=new URLSearchParams(location.hash.slice(1));
+    if(p.get('k'))lsSet('ss_cle',p.get('k'));
+    if(p.get('u'))lsSet('ss_api',p.get('u'));
+    history.replaceState(null,'',location.pathname+location.search);
+  }
+})();
+function cle(){return lsGet('ss_cle');}
+function api(){return lsGet('ss_api')||API_DEFAUT;}
+function configure(){return !!(cle()&&api());}
+
+document.getElementById('categorie').innerHTML=CATS.map(function(c){return '<option>'+c+'</option>';}).join('');
+document.getElementById('date').value=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
+document.getElementById('lienTableau').href=lsGet('ss_sheet')||'https://docs.google.com/spreadsheets/d/1ITm6gWqhALanUQAO_fL3wVuV8-U9AskHb7L8HLbp0w8/edit';
+
+function montrer(t){var r=document.getElementById('res');r.textContent=t;r.style.display='block';r.scrollIntoView({behavior:'smooth',block:'nearest'});}
+function occupe(id,oui,txt){var b=document.getElementById(id);if(!b)return;
+  if(oui){b.dataset.html=b.innerHTML;b.disabled=true;if(txt)b.innerHTML='<span><span class="attente"></span>'+txt+'</span>';}
+  else{b.disabled=false;if(b.dataset.html)b.innerHTML=b.dataset.html;}}
+function afficher(id){['pSans','pResume'].forEach(function(p){document.getElementById(p).style.display=p===id?'block':'none';});
+  var el=document.getElementById(id);el.style.display='block';el.scrollIntoView({behavior:'smooth',block:'start'});}
+function ouvrir(id){if(!configure()){afficher('config');document.getElementById('config').style.display='block';return;}
+  document.getElementById(id).click();}
+
+async function appel(action,donnees){
+  if(!configure()){document.getElementById('config').style.display='block';throw new Error('App pas encore configurée.');}
+  var corps=Object.assign({cle:cle(),action:action},donnees||{});
+  var ctrl=new AbortController();var t=setTimeout(function(){ctrl.abort();},330000);
+  try{
+    var r=await fetch(api(),{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(corps),signal:ctrl.signal});
+    var j=await r.json();
+    if(!j.ok)throw new Error(j.erreur||'Erreur');
+    return j;
+  }catch(e){
+    if(e.name==='AbortError')throw new Error('Trop long : vérifie la connexion puis réessaie.');
+    if(e instanceof TypeError)throw new Error('Pas de connexion internet (ou serveur injoignable).');
+    throw e;
+  }finally{clearTimeout(t);}
+}
+
+// Photos réduites à 1800 px (JPEG) pour un envoi rapide en 3G/4G ; PDF envoyés tels quels
+function lire(f){return new Promise(function(ok,ko){
+  var r=new FileReader();r.onerror=function(){ko(new Error('fichier illisible'));};
+  if(f.type==='application/pdf'){r.onload=function(){ok({b64:r.result.split(',')[1],mime:'application/pdf'});};r.readAsDataURL(f);return;}
+  r.onload=function(){var img=new Image();
+    img.onerror=function(){ok({b64:r.result.split(',')[1],mime:f.type||'image/jpeg'});};
+    img.onload=function(){var k=Math.min(1,1800/Math.max(img.width,img.height));
+      var c=document.createElement('canvas');c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);
+      c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+      ok({b64:c.toDataURL('image/jpeg',0.85).split(',')[1],mime:'image/jpeg'});};
+    img.src=r.result;};
+  r.readAsDataURL(f);});}
+
+async function envoyerFichiers(liste,bouton){
+  var fs=Array.prototype.slice.call(liste||[]);if(!fs.length)return false;
+  occupe(bouton,true,'Lecture de '+fs.length+' reçu'+(fs.length>1?'s':'')+'…');
+  montrer('⏳ Envoi et lecture en cours (environ 10 s par reçu)…');
+  try{
+    var l=await Promise.all(fs.map(lire));
+    var j=await appel('photos',{liste:l});
+    montrer(j.msg);return true;
+  }catch(e){montrer('⚠️ '+e.message);return false;}
+  finally{occupe(bouton,false);}
+}
+
+async function ajouter(){
+  var o={date:v('date'),fournisseur:v('fournisseur'),description:v('description'),categorie:v('categorie'),montant:v('montant')};
+  if(!o.description||!o.montant){montrer('Remplis au moins la description et le montant.');return;}
+  occupe('bA',true,'Ajout…');
+  try{var j=await appel('sansRecu',{depense:o});montrer(j.msg);
+    ['fournisseur','description','montant'].forEach(function(id){document.getElementById(id).value='';});}
+  catch(e){montrer('⚠️ '+e.message);}
+  finally{occupe('bA',false);}
+}
+function v(id){return document.getElementById(id).value.trim();}
+
+function rs(n){return 'Rs '+Number(n||0).toLocaleString('fr-FR',{minimumFractionDigits:0,maximumFractionDigits:2});}
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+
+async function resume(){
+  if(!configure()){document.getElementById('config').style.display='block';return;}
+  occupe('b4',true,'Chargement…');
+  try{
+    var j=await appel('resume');
+    if(j.urlSheet){lsSet('ss_sheet',j.urlSheet);document.getElementById('lienTableau').href=j.urlSheet;}
+    var cats=Object.keys(j.parCat||{}).sort(function(a,b){return j.parCat[b]-j.parCat[a];});
+    var h='<h2>📊 '+esc(j.mois)+'</h2><div class="total">'+rs(j.total)+'</div>'+
+      '<div class="q" style="color:var(--gris);font-size:14px;margin-bottom:8px">'+j.nb+' dépense'+(j.nb>1?'s':'')+'</div>';
+    cats.forEach(function(c){h+='<div class="ligne"><span>'+esc(c)+'</span><b>'+rs(j.parCat[c])+'</b></div>';});
+    if(j.dernieres&&j.dernieres.length){
+      h+='<h2 style="margin-top:16px">Dernières dépenses</h2>';
+      j.dernieres.forEach(function(d){
+        var p=d.alerte==='doublon'?'<span class="pastille doublon">doublon ?</span>':d.alerte==='verifier'?'<span class="pastille verifier">à vérifier</span>':'';
+        h+='<div class="ligne"><span>'+esc(d.date)+' · '+esc(d.fournisseur||d.description)+p+
+           '<br><span class="q">'+esc(d.description)+'</span></span><b>'+rs(d.ttc)+'</b></div>';});
+    }
+    h+='<a class="btn clair" href="'+esc(j.urlSheet)+'" target="_blank" rel="noopener">Ouvrir le tableau complet</a>';
+    document.getElementById('pResume').innerHTML=h;afficher('pResume');
+    document.getElementById('res').style.display='none';
+  }catch(e){montrer('⚠️ '+e.message);}
+  finally{occupe('b4',false);}
+}
+
+async function traiterDrive(){
+  montrer('⏳ Lecture des reçus du dossier Drive…');
+  try{var j=await appel('traiter');montrer(j.msg);}catch(e){montrer('⚠️ '+e.message);}
+}
+
+// Fichiers reçus par « Partager → Spend Smart » (WhatsApp, Galerie…)
+async function partagesEnAttente(){
+  if(!('caches' in window))return;
+  var c=await caches.open('spendsmart-partage');var cles=await c.keys();if(!cles.length)return;
+  var fichiers=[];
+  for(var i=0;i<cles.length;i++){var r=await c.match(cles[i]);var b=await r.blob();
+    fichiers.push(new File([b],decodeURIComponent(r.headers.get('X-Nom')||'photo'),{type:b.type||r.headers.get('Content-Type')}));}
+  if(!configure()){montrer('📥 '+fichiers.length+' fichier(s) reçu(s), mais l\'app n\'est pas encore configurée.');document.getElementById('config').style.display='block';return;}
+  var ok=await envoyerFichiers(fichiers,'b2');
+  if(ok)for(var k=0;k<cles.length;k++)await c.delete(cles[k]);
+}
+
+if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(function(){});}
+(function(){
+  var q=new URLSearchParams(location.search);
+  if(q.get('go')==='sans')afficher('pSans');
+  if(q.get('go')==='scan'&&configure())setTimeout(function(){montrer('Touche 📷 Scanner une facture pour ouvrir l\'appareil photo.');},300);
+  if(q.has('partage')||q.has('go'))history.replaceState(null,'',location.pathname);
+  if(!configure())document.getElementById('config').style.display='block';
+  partagesEnAttente().catch(function(e){montrer('⚠️ '+e.message);});
+})();
+</script>
+</body>
+</html>
