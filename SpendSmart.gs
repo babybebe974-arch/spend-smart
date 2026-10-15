@@ -1,9 +1,9 @@
 /**
- * 💸 SPEND SMART — Dépenses en espèces de Smartdesignforyou (montants en Rs)
+ * 💸 SPEND SMART — Dépenses de Smartdesignforyou, tous moyens de paiement (montants en Rs)
  * ------------------------------------------------------------
  * - Lit les reçus (scan PDF, photo, capture d'écran d'un reçu numérique ou
  *   d'un abonnement) déposés dans le dossier Drive « Spend Smart - À traiter ».
- * - Remplit l'onglet « Dépenses espèces » + l'onglet « Récap » + « Historique ».
+ * - Remplit l'onglet « Dépenses » + l'onglet « Récap » + « Historique ».
  * - Détecte les doublons (ligne ROUGE) et les lectures douteuses (ligne JAUNE).
  * - Dépenses SANS reçu : formulaire (menu ou raccourci Android), ligne ORANGE.
  * - Envoi automatique au comptable X jours avant l'échéance de la déclaration
@@ -24,7 +24,7 @@ const CONFIG = {
   SIGNATURE: 'Réaz Moussa – Smartdesignforyou',
 
   MODELE: 'gemini-flash-latest',       // si Google retire le modèle, le script en choisit un autre seul
-  NOM_ONGLET: 'Dépenses espèces',
+  NOM_ONGLET: 'Dépenses',
   DOSSIER_A_TRAITER: 'Spend Smart - À traiter',
   DOSSIER_TRAITEES: 'Spend Smart - Traitées',
   DOSSIER_ENVOIS: 'Spend Smart - Récaps',
@@ -36,7 +36,7 @@ const CONFIG = {
   // Dépenses ajoutées automatiquement chaque mois (le jour indiqué)
   RECURRENTES: [
     { jour: 1, fournisseur: 'Anthropic (Claude)', description: 'Abonnement Claude',
-      categorie: 'Logiciels & abonnements', ttc: 1100, motsCles: ['claude', 'anthropic'] }
+      categorie: 'Logiciels & abonnements', ttc: 1100, paiement: 'Carte', motsCles: ['claude', 'anthropic'] }
   ]
 };
 CONFIG.URL_APP = 'https://babybebe974-arch.github.io/spend-smart/';
@@ -45,7 +45,9 @@ const JUSTIF_AUTO = 'Abonnement auto';
 const COULEUR_AUTO = '#d9ead3';
 
 const COLONNES = ['Date', 'Fournisseur', 'N° facture', 'Description', 'Catégorie',
-  'HT (Rs)', 'TVA (Rs)', 'TTC (Rs)', 'Justificatif', 'Remarque'];
+  'HT (Rs)', 'TVA (Rs)', 'TTC (Rs)', 'Justificatif', 'Remarque', 'Paiement', 'Vu sur relevé'];
+const PAIEMENTS = ['Espèces', 'Carte', 'Juice', 'Virement'];
+const ANCIENS_ONGLETS = ['Dépenses espèces'];
 
 const CATEGORIES = [
   'Achat marchandises', 'Fret & transport', 'Douane & taxes import', 'Carburant',
@@ -53,7 +55,7 @@ const CATEGORIES = [
   'Téléphone', 'Fournitures & petit matériel', 'Entretien & réparations',
   'Honoraires (comptable, avocat…)', 'Banque & frais financiers',
   'Repas & déplacements', 'Salaires & sous-traitance',
-  'Logiciels & abonnements', 'Autre'
+  'Logiciels & abonnements', 'Assurances', 'Autre'
 ];
 
 const TYPES_OK = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp',
@@ -144,10 +146,17 @@ function dossier_(nom) {
 
 function feuille_(ss) {
   let sh = ss.getSheetByName(CONFIG.NOM_ONGLET);
+  if (!sh) {                                       // ancien nom « Dépenses espèces » : on renomme
+    for (const n of ANCIENS_ONGLETS) {
+      const o = ss.getSheetByName(n);
+      if (o) { o.setName(CONFIG.NOM_ONGLET); sh = o; break; }
+    }
+  }
   // Ancienne version (colonnes différentes) : on la met de côté
   if (sh && sh.getLastRow() > 0) {
-    const entete = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0]
+    let entete = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0]
       .filter(String).join('|');
+    if (entete === COLONNES.slice(0, 10).join('|')) { migrerPaiement_(sh); entete = COLONNES.join('|'); }
     if (entete !== COLONNES.join('|')) {
       if (sh.getLastRow() > 1) {
         sh.setName(CONFIG.NOM_ONGLET + ' (ancienne ' +
@@ -174,6 +183,36 @@ function feuille_(ss) {
   return sh;
 }
 
+// Ajout des colonnes « Paiement » et « Vu sur relevé » à un tableau existant
+function migrerPaiement_(sh) {
+  sh.getRange(1, 11, 1, 2).setValues([['Paiement', 'Vu sur relevé']])
+    .setFontWeight('bold').setBackground('#1f4e79').setFontColor('#ffffff');
+  const n = sh.getLastRow() - 1;
+  if (n < 1) return;
+  const v = sh.getRange(2, 1, n, 10).getValues();
+  v.forEach((r, i) => {
+    const pay = r[8] === JUSTIF_AUTO ? 'Carte' : r[8] === 'Sans reçu' ? 'Espèces'
+      : /phoenix/i.test(r[1]) ? 'Juice' : '';
+    marquerPaiement_(sh, i + 2, pay);
+  });
+}
+
+function normPaiement_(x) {
+  const t = String(x || '').toLowerCase();
+  if (/esp|cash|liquide/.test(t)) return 'Espèces';
+  if (/juice/.test(t)) return 'Juice';
+  if (/vir|transfer|ib |internet banking/.test(t)) return 'Virement';
+  if (/cart|card|visa|master|cb/.test(t)) return 'Carte';
+  return '';
+}
+
+// Colonne K = mode de paiement ; L = case à cocher quand la dépense est retrouvée sur le relevé
+function marquerPaiement_(sh, r, pay) {
+  sh.getRange(r, 11).setValue(pay || '');
+  const c = sh.getRange(r, 12);
+  if (pay && pay !== 'Espèces') { c.insertCheckboxes(); } else { c.clearDataValidations().clearContent(); }
+}
+
 function ouvrirSS_() {
   return preparer_(false);
 }
@@ -186,7 +225,7 @@ function lireLignes_(sh) {
   const liens = sh.getRange(2, 9, n, 1).getRichTextValues();
   return v.map((r, i) => ({
     date: r[0], fournisseur: r[1], numero: r[2], description: r[3], categorie: r[4],
-    ht: r[5], tva: r[6], ttc: r[7], justif: r[8], remarque: r[9],
+    ht: r[5], tva: r[6], ttc: r[7], justif: r[8], remarque: r[9], paiement: r[10], releve: r[11] === true,
     lien: liens[i][0] ? liens[i][0].getLinkUrl() : null
   }));
 }
@@ -200,7 +239,7 @@ function traiterFactures() {
   if (ui) {
     ui.alert('💸 Spend Smart', res.msg, ui.ButtonSet.OK);
   } else if (!res.rienAFaire) {
-    MailApp.sendEmail(moi_(), '💸 Spend Smart : récap des dépenses espèces', res.msg);
+    MailApp.sendEmail(moi_(), '💸 Spend Smart : récap des dépenses', res.msg);
   }
 }
 
@@ -411,7 +450,7 @@ Ce document est une preuve de DÉPENSE : facture, ticket de caisse, reçu manusc
 d'un reçu numérique (abonnement, application, e-mail de confirmation, paiement en ligne).
 Les montants sont normalement en roupies mauriciennes (Rs, MUR). La TVA à Maurice est de 15 %.
 Réponds UNIQUEMENT avec ce JSON :
-{"date":"AAAA-MM-JJ","fournisseur":"","numero":"","description":"","categorie":"","ht":0,"tva":0,"ttc":0,"devise":"MUR","confiance":"haute"}
+{"date":"AAAA-MM-JJ","fournisseur":"","numero":"","description":"","categorie":"","ht":0,"tva":0,"ttc":0,"devise":"MUR","paiement":"","confiance":"haute"}
 
 Règles :
 - date : date de la facture ou du paiement (pas l'échéance). Les dates locales sont au format JJ/MM/AAAA.
@@ -422,6 +461,8 @@ Règles :
 - ht, tva, ttc : nombres sans espace ni symbole, point décimal. ttc = total payé.
   Si la TVA n'apparaît pas, tva = null et ht = null.
 - devise : "MUR" pour Rs / roupies ; sinon le code ISO réellement affiché (USD, EUR…).
+- paiement : "Espèces" (cash, espèces, monnaie rendue), "Carte" (VISA, Mastercard, carte ****1234, paiement en ligne par carte),
+  "Juice" (MCB Juice), "Virement" (virement bancaire, Internet Banking) ; null si le reçu ne l'indique pas.
 - Valeur absente ou illisible : null.
 - confiance : "basse" si document flou, manuscrit, ou doute sur un montant ou la date ; sinon "haute".`;
 }
@@ -448,6 +489,7 @@ function ajouterLigne_(sh, lignes, d, f) {
   sh.appendRow([date, n.fournisseur, n.numero, d.description || '', cat,
     num_(d.ht), num_(d.tva), n.ttc, '', remarques.join(' · ')]);
   const r = sh.getLastRow();
+  marquerPaiement_(sh, r, normPaiement_(d.paiement));
   sh.getRange(r, 9).setRichTextValue(
     SpreadsheetApp.newRichTextValue().setText('📄 Voir').setLinkUrl(f.getUrl()).build());
   if (dbl) sh.getRange(r, 1, 1, COLONNES.length).setBackground(COULEUR.DOUBLON);
@@ -500,6 +542,7 @@ function ajouterAbonnements() {
     const date = new Date(auj.getFullYear(), auj.getMonth(), rec.jour);
     sh.appendRow([date, rec.fournisseur, '', rec.description, rec.categorie,
       '', '', rec.ttc, JUSTIF_AUTO, 'Ajouté automatiquement chaque mois']);
+    marquerPaiement_(sh, sh.getLastRow(), rec.paiement || '');
     sh.getRange(sh.getLastRow(), 1, 1, COLONNES.length).setBackground(COULEUR_AUTO);
     props.setProperty(cle, '1');
     journal_(ss, 'Abonnement auto', 1, rec.ttc, 0, 0, rec.description);
@@ -547,6 +590,7 @@ function ajouterSansRecu(o) {
 
     sh.appendRow([date, n.fournisseur || '—', '', String(o.description).trim(), cat,
       '', '', montant, 'Sans reçu', remarque]);
+    marquerPaiement_(sh, sh.getLastRow(), normPaiement_(o.paiement) || 'Espèces');
     sh.getRange(sh.getLastRow(), 1, 1, COLONNES.length)
       .setBackground(dbl ? COULEUR.DOUBLON : COULEUR.SANS_RECU);
     trier_(sh);
@@ -611,8 +655,11 @@ function resumeMois_() {
     date: jjmm_(l.date), fournisseur: String(l.fournisseur || ''), description: String(l.description || ''),
     ttc: Number(l.ttc) || 0, alerte: /Doublon/.test(l.remarque) ? 'doublon' : (l.remarque && l.justif !== JUSTIF_AUTO && l.justif !== 'Sans reçu' ? 'verifier' : '')
   }));
+  const parPaiement = {};
+  lignes.forEach(l => { const k = l.paiement || 'Non précisé'; parPaiement[k] = (parPaiement[k] || 0) + (Number(l.ttc) || 0); });
+  const aPointer = lignes.filter(l => l.paiement && l.paiement !== 'Espèces' && !l.releve).length;
   return { mois: MOIS[auj.getMonth()] + ' ' + auj.getFullYear(), total: total, nb: lignes.length,
-    parCat: parCat, dernieres: dernieres, urlSheet: 'https://docs.google.com/spreadsheets/d/' + ss.getId() + '/edit' };
+    parCat: parCat, parPaiement: parPaiement, aPointer: aPointer, dernieres: dernieres, urlSheet: 'https://docs.google.com/spreadsheets/d/' + ss.getId() + '/edit' };
 }
 
 function page_(avecLienTableau) {
@@ -644,11 +691,12 @@ function page_(avecLienTableau) {
 <button class="btn bleu" id="bT" onclick="traiter()">📥 Traiter les reçus du dossier Drive</button>
 <div id="res"></div>
 
-<h3>➕ Dépense en espèces sans reçu</h3>
+<h3>➕ Dépense sans reçu</h3>
 <label>Date</label><input type="date" id="date" value="${aujourdhui}">
 <label>Fournisseur / lieu</label><input id="fournisseur" placeholder="ex. Parking Port-Louis">
 <label>Description *</label><input id="description" placeholder="ex. Parking livraison client">
 <label>Catégorie</label><select id="categorie">${options}</select>
+<label>Payé par</label><select id="paiement">${PAIEMENTS.map(x => '<option>' + x + '</option>').join('')}</select>
 <label>Montant payé (Rs) *</label><input id="montant" type="number" inputmode="decimal" step="0.01" min="0">
 <div style="height:14px"></div>
 <button class="btn orange" id="bA" onclick="ajouter()">Ajouter la dépense</button>
@@ -668,7 +716,7 @@ ${avecLienTableau ? '<a class="btn vert" style="margin-top:10px" target="_blank"
   }
   function ajouter(){
     var o={date:val('date'),fournisseur:val('fournisseur'),description:val('description'),
-           categorie:val('categorie'),montant:val('montant')};
+           categorie:val('categorie'),paiement:val('paiement'),montant:val('montant')};
     if(!o.description||!o.montant){montrer('Remplis au moins la description et le montant.');return;}
     occupe('bA',true,'⏳ Ajout…');
     google.script.run
@@ -717,7 +765,7 @@ function majRecap_(ss) {
   rc.clear();
 
   const p = prochainePeriode_(new Date());
-  rc.getRange(1, 1).setValue('Récap des dépenses espèces (Rs TTC)').setFontWeight('bold').setFontSize(14);
+  rc.getRange(1, 1).setValue('Récap des dépenses (Rs TTC)').setFontWeight('bold').setFontSize(14);
   rc.getRange(2, 1).setValue(`Mis à jour le ${Utilities.formatDate(new Date(), tz_(), 'dd/MM/yyyy HH:mm')} · ` +
     `Prochaine déclaration TVA : ${jjmmaaaa_(p.echeance)} (${p.label}) · envoi au comptable le ${jjmmaaaa_(dateEnvoi_(p))}`)
     .setFontColor('#4a5563');
@@ -744,6 +792,23 @@ function majRecap_(ss) {
   rc.getRange(ligne + tab.length - 1, 1, 1, tab[0].length).setFontWeight('bold').setBackground('#dbe5f1');
   rc.getRange(ligne + 1, 2, tab.length - 1, tab[0].length - 1).setNumberFormat('#,##0');
   ligne += tab.length + 2;
+
+  // Bloc 1 bis : par moyen de paiement × mois + pointage relevé
+  const modes = PAIEMENTS.concat(['Non précisé']);
+  const tp = [['Payé par'].concat(mois.map(m => MOIS[+m.slice(5) - 1] + ' ' + m.slice(0, 4)), ['Total', 'Pas encore vu sur relevé'])];
+  modes.forEach(md => {
+    const l = lignes.filter(x => (x.paiement || 'Non précisé') === md);
+    if (!l.length) return;
+    const vals = mois.map(m => l.filter(x => Utilities.formatDate(x.date, tz_(), 'yyyy-MM') === m)
+      .reduce((s, x) => s + (Number(x.ttc) || 0), 0));
+    const aPointer = md === 'Espèces' || md === 'Non précisé' ? '' : l.filter(x => !x.releve).length;
+    tp.push([md].concat(vals, [vals.reduce((a, b) => a + b, 0), aPointer]));
+  });
+  rc.getRange(ligne, 1).setValue('Par moyen de paiement (cocher « Vu sur relevé » après contrôle du relevé MCB)').setFontWeight('bold');
+  rc.getRange(ligne + 1, 1, tp.length, tp[0].length).setValues(tp);
+  rc.getRange(ligne + 1, 1, 1, tp[0].length).setFontWeight('bold').setBackground('#1f4e79').setFontColor('#fff');
+  rc.getRange(ligne + 2, 2, Math.max(tp.length - 1, 1), tp[0].length - 2).setNumberFormat('#,##0');
+  ligne += tp.length + 3;
 
   // Bloc 2 : par période de déclaration TVA
   const periodes = {};
@@ -894,11 +959,11 @@ function envoyerComptable_(p) {
 
   if (!lignes.length && p.mensuel) {
     props.setProperty(p.key, 'vide');                         // mois sans dépense : rien à envoyer
-    return `Aucune dépense espèces en ${p.label} : pas de récap.`;
+    return `Aucune dépense en ${p.label} : pas de récap.`;
   }
   if (!lignes.length) {
-    MailApp.sendEmail(moi, `Spend Smart : aucune dépense espèces pour ${p.label}`,
-      `Aucune dépense espèces enregistrée pour ${p.label}.\nRien n'a été envoyé au comptable.\n` +
+    MailApp.sendEmail(moi, `Spend Smart : aucune dépense pour ${p.label}`,
+      `Aucune dépense enregistrée pour ${p.label}.\nRien n'a été envoyé au comptable.\n` +
       `Échéance de la déclaration TVA : ${jjmmaaaa_(p.echeance)}.`);
     props.setProperty(bureau ? p.key : p.key + '_MOI', jjmmaaaa_(new Date()));
     return `Aucune dépense pour ${p.label} : rien envoyé au comptable (tu as reçu un e-mail de rappel).`;
@@ -908,16 +973,17 @@ function envoyerComptable_(p) {
   const tot = { ht: somme(lignes, 'ht'), tva: somme(lignes, 'tva'), ttc: somme(lignes, 'ttc') };
   const sans = lignes.filter(l => !l.lien);
   const douteux = lignes.filter(l => /Doublon|convertir|illisible|incertaine/.test(String(l.remarque)));
-  const nomBase = `Smartdesignforyou_Depenses_especes_${p.code}`;
+  const nomBase = `Smartdesignforyou_Depenses_${p.code}`;
 
   // ----- Fichier Excel -----
   const tmp = SpreadsheetApp.create(nomBase);
   const s1 = tmp.getSheets()[0];
-  s1.setName('Dépenses espèces');
+  s1.setName('Dépenses');
   const data = [COLONNES].concat(lignes.map(l => [l.date, l.fournisseur, l.numero, l.description,
     l.categorie, l.ht, l.tva, l.ttc,
-    l.lien ? '=HYPERLINK("' + l.lien + '","Voir le reçu")' : (l.justif || 'Sans reçu'), l.remarque]));
-  data.push(['TOTAL', '', '', '', '', tot.ht, tot.tva, tot.ttc, '', '']);
+    l.lien ? '=HYPERLINK("' + l.lien + '","Voir le reçu")' : (l.justif || 'Sans reçu'), l.remarque,
+    l.paiement || '', l.paiement && l.paiement !== 'Espèces' ? (l.releve ? 'oui' : 'non') : '']));
+  data.push(['TOTAL', '', '', '', '', tot.ht, tot.tva, tot.ttc, '', '', '', '']);
   s1.getRange(1, 1, data.length, COLONNES.length).setValues(data);
   s1.getRange(1, 1, 1, COLONNES.length).setFontWeight('bold').setBackground('#1f4e79').setFontColor('#fff');
   s1.getRange(data.length, 1, 1, COLONNES.length).setFontWeight('bold');
@@ -976,9 +1042,9 @@ function envoyerComptable_(p) {
   const tdr = 'style="padding:6px 10px;border-bottom:1px solid #e3e8ee;text-align:right"';
   const html =
     `<p>Bonjour,</p>
-<p>Voici les <b>dépenses payées en espèces</b> de Smartdesignforyou pour <b>${p.label}</b>
+<p>Voici les <b>dépenses</b> (espèces, carte, Juice, virements) de Smartdesignforyou pour <b>${p.label}</b>
 (du ${jjmmaaaa_(p.debut)} au ${jjmmaaaa_(p.fin)})${p.mensuel ? '' : `, en vue de la déclaration TVA à déposer
-avant le <b>${jjmmaaaa_(p.echeance)}</b>`}. Les opérations bancaires ne sont pas incluses.
+avant le <b>${jjmmaaaa_(p.echeance)}</b>`}. Certains virements peuvent manquer : ils figurent sur les relevés bancaires.
 Fichiers aussi rangés dans Drive, dossier « ${CONFIG.DOSSIER_ENVOIS} ».</p>
 <table style="border-collapse:collapse;font-family:Arial,sans-serif;font-size:14px">
 <tr><td ${td}>Nombre de dépenses</td><td ${tdr}>${lignes.length}</td></tr>
@@ -998,9 +1064,9 @@ ${douteux.length ? `<p style="color:#9c2a00">${douteux.length} ligne(s) portent 
   const options = { htmlBody: html, attachments: pj, name: 'Smartdesignforyou' };
   if (bureau) options.cc = moi;
   MailApp.sendEmail(bureau || moi,
-    p.mensuel ? `Récap mensuel dépenses espèces ${p.label} — Smartdesignforyou`
-      : `Dépenses espèces ${p.label} — Smartdesignforyou (TVA avant le ${jjmmaaaa_(p.echeance)})`,
-    `Dépenses espèces ${p.label} : ${lignes.length} dépenses, total ${rs_(tot.ttc)}. Voir pièces jointes.`,
+    p.mensuel ? `Récap mensuel des dépenses ${p.label} — Smartdesignforyou`
+      : `Dépenses ${p.label} — Smartdesignforyou (TVA avant le ${jjmmaaaa_(p.echeance)})`,
+    `Dépenses ${p.label} : ${lignes.length} dépenses, total ${rs_(tot.ttc)}. Voir pièces jointes.`,
     options);
 
   props.setProperty(p.mensuel || bureau ? p.key : p.key + '_MOI', jjmmaaaa_(new Date()));

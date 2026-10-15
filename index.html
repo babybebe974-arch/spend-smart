@@ -50,7 +50,7 @@
 <body>
 <header>
   <img src="icon-192.png" alt="">
-  <h1>Spend Smart<small>Dépenses en espèces · Smartdesignforyou</small></h1>
+  <h1>Spend Smart<small>Dépenses · Smartdesignforyou</small></h1>
 </header>
 
 <div class="grille" id="grille">
@@ -65,11 +65,12 @@
 <div id="res"></div>
 
 <div class="panneau" id="pSans">
-  <h2>✍️ Dépense en espèces sans reçu</h2>
+  <h2>✍️ Dépense sans reçu</h2>
   <label for="date">Date</label><input type="date" id="date">
   <label for="fournisseur">Fournisseur / lieu</label><input id="fournisseur" placeholder="ex. Parking Port-Louis">
   <label for="description">Description *</label><input id="description" placeholder="ex. Parking livraison client">
   <label for="categorie">Catégorie</label><select id="categorie"></select>
+  <label for="paiement">Payé par</label><select id="paiement"><option>Espèces</option><option>Carte</option><option>Juice</option><option>Virement</option></select>
   <label for="montant">Montant payé (Rs) *</label><input id="montant" type="number" inputmode="decimal" step="0.01" min="0">
   <button class="btn orange" id="bA" onclick="ajouter()">Ajouter la dépense</button>
 </div>
@@ -91,7 +92,7 @@
 var API_DEFAUT = 'https://script.google.com/macros/s/AKfycbzLvp065hwYgoAYhL7LfGDe4NljYYwT0yiX-IBFvqnP9F1hXaIPuJS-3vgC9RmpYvr1/exec';
 var CATS = ['Achat marchandises','Fret & transport','Douane & taxes import','Carburant','Publicité & marketing','Loyer & charges',
   'Électricité / eau / internet','Téléphone','Fournitures & petit matériel','Entretien & réparations','Honoraires (comptable, avocat…)',
-  'Banque & frais financiers','Repas & déplacements','Salaires & sous-traitance','Logiciels & abonnements','Autre'];
+  'Banque & frais financiers','Repas & déplacements','Salaires & sous-traitance','Logiciels & abonnements','Assurances','Autre'];
 
 function lsGet(k){try{return localStorage.getItem(k)||'';}catch(e){return '';}}
 function lsSet(k,v){try{localStorage.setItem(k,v);}catch(e){}}
@@ -164,7 +165,7 @@ async function envoyerFichiers(liste,bouton){
 }
 
 async function ajouter(){
-  var o={date:v('date'),fournisseur:v('fournisseur'),description:v('description'),categorie:v('categorie'),montant:v('montant')};
+  var o={date:v('date'),fournisseur:v('fournisseur'),description:v('description'),categorie:v('categorie'),paiement:v('paiement'),montant:v('montant')};
   if(!o.description||!o.montant){montrer('Remplis au moins la description et le montant.');return;}
   occupe('bA',true,'Ajout…');
   try{var j=await appel('sansRecu',{depense:o});montrer(j.msg);
@@ -187,6 +188,10 @@ async function resume(){
     var h='<h2>📊 '+esc(j.mois)+'</h2><div class="total">'+rs(j.total)+'</div>'+
       '<div class="q" style="color:var(--gris);font-size:14px;margin-bottom:8px">'+j.nb+' dépense'+(j.nb>1?'s':'')+'</div>';
     cats.forEach(function(c){h+='<div class="ligne"><span>'+esc(c)+'</span><b>'+rs(j.parCat[c])+'</b></div>';});
+    var pays=Object.keys(j.parPaiement||{});
+    if(pays.length){h+='<h2 style="margin-top:16px">Payé par</h2>';
+      pays.forEach(function(k){h+='<div class="ligne"><span>'+esc(k)+'</span><b>'+rs(j.parPaiement[k])+'</b></div>';});
+      if(j.aPointer)h+='<div class="q" style="color:var(--gris);font-size:13px;margin-top:6px">'+j.aPointer+' paiement'+(j.aPointer>1?'s':'')+' carte/Juice/virement à confirmer sur le relevé MCB (case « Vu sur relevé » dans le tableau).</div>';}
     if(j.dernieres&&j.dernieres.length){
       h+='<h2 style="margin-top:16px">Dernières dépenses</h2>';
       j.dernieres.forEach(function(d){
