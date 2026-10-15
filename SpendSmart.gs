@@ -205,6 +205,40 @@ function traiterFactures() {
 }
 
 // Appelée par le bouton du raccourci Android
+// ====== DEMANDES DE CLAUDE (fichiers JSON déposés dans Drive) ======
+// Claude dépose {"action":"sansRecu","depense":{date,fournisseur,description,categorie,montant}}
+// ou {"action":"traiter"} dans « Spend Smart - Demandes Claude » ; résultat dans « Spend Smart - Demandes traitées ».
+function installerDemandesClaude() {
+  dossier_('Spend Smart - Demandes Claude');
+  dossier_('Spend Smart - Demandes traitées');
+  ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'traiterDemandesClaude')
+    .forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('traiterDemandesClaude').timeBased().everyMinutes(1).create();
+  return 'OK';
+}
+
+function traiterDemandesClaude() {
+  const src = dossier_('Spend Smart - Demandes Claude');
+  const dest = dossier_('Spend Smart - Demandes traitées');
+  const it = src.getFiles();
+  while (it.hasNext()) {
+    const f = it.next();
+    const nom = f.getName().replace(/\.json$/i, '');
+    let res;
+    try {
+      const q = JSON.parse(f.getBlob().getDataAsString());
+      if (q.action === 'sansRecu') res = { ok: true, msg: ajouterSansRecu(q.depense) };
+      else if (q.action === 'traiter') res = { ok: true, msg: traiterDepuisWeb() };
+      else if (q.action === 'resume') res = Object.assign({ ok: true }, resumeMois_());
+      else throw new Error('Action inconnue : ' + q.action);
+    } catch (e) {
+      res = { ok: false, erreur: e.message };
+    }
+    dest.createFile(nom + '_RESULTAT.json', JSON.stringify(res, null, 2), 'application/json');
+    f.moveTo(dest);
+  }
+}
+
 function traiterDepuisWeb() {
   return executer_('Android', CONFIG.DUREE_MAX_MS).msg;
 }
