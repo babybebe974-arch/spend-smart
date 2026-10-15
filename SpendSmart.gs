@@ -808,7 +808,9 @@ function prochainePeriode_(auj) {
   const j = jourSeul_(auj);
   const cour = periodeContenant_(j);
   const prec = periodeContenant_(new Date(cour.debut.getFullYear(), cour.debut.getMonth(), 0));
-  return j <= prec.echeance ? prec : cour;
+  const props = PropertiesService.getScriptProperties();
+  const precFaite = props.getProperty(prec.key) || props.getProperty(prec.key + '_MOI');
+  return (j <= prec.echeance && !precFaite) ? prec : cour;
 }
 
 function dateEnvoi_(p) {
