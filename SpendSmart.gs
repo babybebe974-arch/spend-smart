@@ -23,7 +23,7 @@ const CONFIG = {
   JOURS_AVANT_TVA: 7,                  // envoi au comptable X jours avant l'échéance
   SIGNATURE: 'Réaz Moussa – Smartdesignforyou',
 
-  MODELE: 'gemini-2.5-flash',          // si erreur 404 : mettre le modèle Flash actuel
+  MODELE: 'gemini-flash-latest',       // si Google retire le modèle, le script en choisit un autre seul
   NOM_ONGLET: 'Dépenses espèces',
   DOSSIER_A_TRAITER: 'Spend Smart - À traiter',
   DOSSIER_TRAITEES: 'Spend Smart - Traitées',
@@ -332,9 +332,26 @@ function executer_(source, dureeMax) {
   }
 }
 
+// Modèle Gemini : celui mémorisé, sinon CONFIG.MODELE ; si Google le retire (404), on en cherche un autre tout seul
+function modele_() {
+  return PropertiesService.getScriptProperties().getProperty('MODELE_GEMINI') || CONFIG.MODELE;
+}
+
+function trouverModele_(cle, exclu) {
+  const rep = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=' +
+    encodeURIComponent(cle), { muteHttpExceptions: true });
+  if (rep.getResponseCode() !== 200) return null;
+  const noms = (JSON.parse(rep.getContentText()).models || [])
+    .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
+    .map(m => m.name.replace(/^models\//, ''))
+    .filter(n => /flash/i.test(n) && !/lite|image|tts|audio|live|thinking|exp|preview/i.test(n) && n !== exclu);
+  if (!noms.length) return null;
+  const v = n => (n.match(/(\d+(?:\.\d+)?)/) || [0, 0])[1] * 1;
+  noms.sort((a, b) => (/latest/.test(b) - /latest/.test(a)) || (v(b) - v(a)));
+  return noms[0];
+}
+
 function lireFacture_(blob, mime, cle) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${CONFIG.MODELE}` +
-    `:generateContent?key=${encodeURIComponent(cle)}`;
   const payload = {
     contents: [{
       parts: [
@@ -348,11 +365,22 @@ function lireFacture_(blob, mime, cle) {
     method: 'post', contentType: 'application/json',
     payload: JSON.stringify(payload), muteHttpExceptions: true
   };
+  const appel = m => UrlFetchApp.fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}` +
+    `:generateContent?key=${encodeURIComponent(cle)}`, opts);
 
-  let rep = UrlFetchApp.fetch(url, opts);
+  let modele = modele_();
+  let rep = appel(modele);
+  if (rep.getResponseCode() === 404) {       // modèle retiré par Google : on bascule sur le Flash actuel
+    const autre = trouverModele_(cle, modele);
+    if (autre) {
+      PropertiesService.getScriptProperties().setProperty('MODELE_GEMINI', autre);
+      modele = autre;
+      rep = appel(modele);
+    }
+  }
   if ([429, 500, 503].includes(rep.getResponseCode())) {
     Utilities.sleep(20000);                 // quota ou serveur occupé : on réessaie une fois
-    rep = UrlFetchApp.fetch(url, opts);
+    rep = appel(modele);
   }
   if (rep.getResponseCode() !== 200) {
     throw new Error(`Gemini ${rep.getResponseCode()} ${rep.getContentText().slice(0, 150)}`);
