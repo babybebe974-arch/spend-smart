@@ -351,7 +351,8 @@ function executer_(source, dureeMax) {
         const blob = f.getBlob();
         if (blob.getBytes().length > 15 * 1024 * 1024) throw new Error('fichier trop lourd (>15 Mo)');
         const d = lireFacture_(blob, mime, cle);
-        const choix = /paiement:(\S+)/.exec(f.getDescription() || '');
+        const choix = /paiement:(\S+)/.exec(f.getDescription() || '') ||
+          /^(esp[eè]ces|virement)__/i.exec(f.getName());          // ex. « virement__recu.jpg » (déposé par Claude)
         if (choix) d.paiement = choix[1];
         const info = ajouterLigne_(sh, lignes, d, f);
         f.setName(nomPropre_(d, f.getName()));
