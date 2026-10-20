@@ -36,7 +36,7 @@ const CONFIG = {
   // Dépenses ajoutées automatiquement chaque mois (le jour indiqué)
   RECURRENTES: [
     { jour: 1, fournisseur: 'Anthropic (Claude)', description: 'Abonnement Claude',
-      categorie: 'Logiciels & abonnements', ttc: 1100, paiement: 'Carte', motsCles: ['claude', 'anthropic'] }
+      categorie: 'Logiciels & abonnements', ttc: 1100, paiement: 'Virement', motsCles: ['claude', 'anthropic'] }
   ]
 };
 CONFIG.URL_APP = 'https://babybebe974-arch.github.io/spend-smart/';
@@ -46,7 +46,7 @@ const COULEUR_AUTO = '#d9ead3';
 
 const COLONNES = ['Date', 'Fournisseur', 'N° facture', 'Description', 'Catégorie',
   'HT (Rs)', 'TVA (Rs)', 'TTC (Rs)', 'Justificatif', 'Remarque', 'Paiement', 'Vu sur relevé'];
-const PAIEMENTS = ['Espèces', 'Carte', 'Juice', 'Virement'];
+const PAIEMENTS = ['Espèces', 'Virement'];   // Virement = tout ce qui passe par la banque (Juice, carte, virement)
 const ANCIENS_ONGLETS = ['Dépenses espèces'];
 
 const CATEGORIES = [
@@ -157,6 +157,7 @@ function feuille_(ss) {
     let entete = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0]
       .filter(String).join('|');
     if (entete === COLONNES.slice(0, 10).join('|')) { migrerPaiement_(sh); entete = COLONNES.join('|'); }
+    if (entete === COLONNES.join('|')) fusionnerVirements_(sh);
     if (entete !== COLONNES.join('|')) {
       if (sh.getLastRow() > 1) {
         sh.setName(CONFIG.NOM_ONGLET + ' (ancienne ' +
@@ -191,8 +192,8 @@ function migrerPaiement_(sh) {
   if (n < 1) return;
   const v = sh.getRange(2, 1, n, 10).getValues();
   v.forEach((r, i) => {
-    const pay = r[8] === JUSTIF_AUTO ? 'Carte' : r[8] === 'Sans reçu' ? 'Espèces'
-      : /phoenix/i.test(r[1]) ? 'Juice' : '';
+    const pay = r[8] === JUSTIF_AUTO ? 'Virement' : r[8] === 'Sans reçu' ? 'Espèces'
+      : /phoenix/i.test(r[1]) ? 'Virement' : '';
     marquerPaiement_(sh, i + 2, pay);
   });
 }
@@ -200,10 +201,17 @@ function migrerPaiement_(sh) {
 function normPaiement_(x) {
   const t = String(x || '').toLowerCase();
   if (/esp|cash|liquide/.test(t)) return 'Espèces';
-  if (/juice/.test(t)) return 'Juice';
-  if (/vir|transfer|ib |internet banking/.test(t)) return 'Virement';
-  if (/cart|card|visa|master|cb/.test(t)) return 'Carte';
+  if (/juice|vir|transfer|banking|cart|card|visa|master|cb/.test(t)) return 'Virement';
   return '';
+}
+
+// Ancien découpage Carte / Juice → Virement (une seule fois)
+function fusionnerVirements_(sh) {
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty('MIGR_PAIE2') || sh.getLastRow() < 2) return;
+  const r = sh.getRange(2, 11, sh.getLastRow() - 1, 1);
+  r.setValues(r.getValues().map(v => [/carte|juice/i.test(v[0]) ? 'Virement' : v[0]]));
+  props.setProperty('MIGR_PAIE2', '1');
 }
 
 // Colonne K = mode de paiement ; L = case à cocher quand la dépense est retrouvée sur le relevé
@@ -465,8 +473,8 @@ Règles :
 - ht, tva, ttc : nombres sans espace ni symbole, point décimal. ttc = total payé.
   Si la TVA n'apparaît pas, tva = null et ht = null.
 - devise : "MUR" pour Rs / roupies ; sinon le code ISO réellement affiché (USD, EUR…).
-- paiement : "Espèces" (cash, espèces, monnaie rendue), "Carte" (VISA, Mastercard, carte ****1234, paiement en ligne par carte),
-  "Juice" (MCB Juice), "Virement" (virement bancaire, Internet Banking) ; null si le reçu ne l'indique pas.
+- paiement : "Espèces" (cash, espèces, monnaie rendue) ou "Virement" (tout paiement passé par la banque : MCB Juice,
+  carte VISA/Mastercard, paiement en ligne, virement, Internet Banking) ; null si le reçu ne l'indique pas.
 - Valeur absente ou illisible : null.
 - confiance : "basse" si document flou, manuscrit, ou doute sur un montant ou la date ; sinon "haute".`;
 }
@@ -808,7 +816,7 @@ function majRecap_(ss) {
     const aPointer = md === 'Espèces' || md === 'Non précisé' ? '' : l.filter(x => !x.releve).length;
     tp.push([md].concat(vals, [vals.reduce((a, b) => a + b, 0), aPointer]));
   });
-  rc.getRange(ligne, 1).setValue('Par moyen de paiement (cocher « Vu sur relevé » après contrôle du relevé MCB)').setFontWeight('bold');
+  rc.getRange(ligne, 1).setValue('Espèces / Virement (cocher « Vu sur relevé » après contrôle du relevé MCB)').setFontWeight('bold');
   rc.getRange(ligne + 1, 1, tp.length, tp[0].length).setValues(tp);
   rc.getRange(ligne + 1, 1, 1, tp[0].length).setFontWeight('bold').setBackground('#1f4e79').setFontColor('#fff');
   rc.getRange(ligne + 2, 2, Math.max(tp.length - 1, 1), tp[0].length - 2).setNumberFormat('#,##0');
@@ -1046,7 +1054,7 @@ function envoyerComptable_(p) {
   const tdr = 'style="padding:6px 10px;border-bottom:1px solid #e3e8ee;text-align:right"';
   const html =
     `<p>Bonjour,</p>
-<p>Voici les <b>dépenses</b> (espèces, carte, Juice, virements) de Smartdesignforyou pour <b>${p.label}</b>
+<p>Voici les <b>dépenses</b> (espèces et virements) de Smartdesignforyou pour <b>${p.label}</b>
 (du ${jjmmaaaa_(p.debut)} au ${jjmmaaaa_(p.fin)})${p.mensuel ? '' : `, en vue de la déclaration TVA à déposer
 avant le <b>${jjmmaaaa_(p.echeance)}</b>`}. Certains virements peuvent manquer : ils figurent sur les relevés bancaires.
 Fichiers aussi rangés dans Drive, dossier « ${CONFIG.DOSSIER_ENVOIS} ».</p>

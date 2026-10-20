@@ -19,9 +19,9 @@
   header small{display:block;color:var(--gris);font-size:13px;font-weight:400}
   .grille{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   .etape{font-size:14px;font-weight:650;color:var(--gris);margin:4px 0 8px}
-  .chips{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px;border-radius:14px;transition:box-shadow .2s}
-  .chips button{border:2px solid var(--filet);background:var(--carte);color:var(--texte);border-radius:12px;padding:10px 4px;
-    font:inherit;font-size:14px;font-weight:600;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px}
+  .chips{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;border-radius:14px;transition:box-shadow .2s}
+  .chips button{border:2px solid var(--filet);background:var(--carte);color:var(--texte);border-radius:12px;padding:12px 4px;
+    font:inherit;font-size:16px;font-weight:600;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px}
   .chips button span{font-size:22px}
   .chips button.on{border-color:var(--bleu);background:#E3ECF6;color:var(--bleu)}
   .chips.alerte{box-shadow:0 0 0 3px var(--orange)}
@@ -63,9 +63,7 @@
 <div class="etape">1. Payé par</div>
 <div class="chips" id="chips">
   <button type="button" data-p="Espèces"><span>💵</span>Espèces</button>
-  <button type="button" data-p="Virement"><span>🏦</span>Virement</button>
-  <button type="button" data-p="Carte"><span>💳</span>Carte</button>
-  <button type="button" data-p="Juice"><span>📱</span>Juice</button>
+  <button type="button" data-p="Virement"><span>🏦</span>Virement / Juice</button>
 </div>
 <div class="etape">2. Le reçu</div>
 <div class="grille" id="grille">
@@ -141,7 +139,7 @@ function choisirPaie(p){PAIE=p;[].forEach.call(document.querySelectorAll('#chips
   if(ENATTENTE){var e=ENATTENTE;ENATTENTE=null;envoyerPartages(e);}}
 function remettrePaie(){PAIE='';[].forEach.call(document.querySelectorAll('#chips button'),function(b){b.classList.remove('on');});}
 function exigePaie(){if(PAIE)return true;var c=document.getElementById('chips');c.classList.add('alerte');
-  c.scrollIntoView({behavior:'smooth',block:'center'});montrer('👆 Choisis d\'abord comment tu as payé : Espèces, Virement, Carte ou Juice.');return false;}
+  c.scrollIntoView({behavior:'smooth',block:'center'});montrer('👆 Choisis d\'abord comment tu as payé : Espèces ou Virement.');return false;}
 [].forEach.call(document.querySelectorAll('#chips button'),function(b){b.addEventListener('click',function(){choisirPaie(b.dataset.p);});});
 function ouvrir(id){if(!configure()){afficher('config');document.getElementById('config').style.display='block';return;}
   if(!exigePaie())return;
@@ -216,7 +214,7 @@ async function resume(){
     var pays=Object.keys(j.parPaiement||{});
     if(pays.length){h+='<h2 style="margin-top:16px">Payé par</h2>';
       pays.forEach(function(k){h+='<div class="ligne"><span>'+esc(k)+'</span><b>'+rs(j.parPaiement[k])+'</b></div>';});
-      if(j.aPointer)h+='<div class="q" style="color:var(--gris);font-size:13px;margin-top:6px">'+j.aPointer+' paiement'+(j.aPointer>1?'s':'')+' carte/Juice/virement à confirmer sur le relevé MCB (case « Vu sur relevé » dans le tableau).</div>';}
+      if(j.aPointer)h+='<div class="q" style="color:var(--gris);font-size:13px;margin-top:6px">'+j.aPointer+' virement'+(j.aPointer>1?'s':'')+' à confirmer sur le relevé MCB (case « Vu sur relevé » dans le tableau).</div>';}
     if(j.dernieres&&j.dernieres.length){
       h+='<h2 style="margin-top:16px">Dernières dépenses</h2>';
       j.dernieres.forEach(function(d){
@@ -246,7 +244,7 @@ async function partagesEnAttente(){
   if(!configure()){montrer('📥 '+fichiers.length+' fichier(s) reçu(s), mais l\'app n\'est pas encore configurée.');document.getElementById('config').style.display='block';return;}
   var e={fichiers:fichiers,cles:cles,cache:c};
   if(!PAIE){ENATTENTE=e;document.getElementById('chips').classList.add('alerte');
-    montrer('📥 '+fichiers.length+' reçu'+(fichiers.length>1?'s':'')+' partagé'+(fichiers.length>1?'s':'')+' : touche comment tu as payé (Espèces, Virement, Carte ou Juice) et l\'envoi part tout seul.');return;}
+    montrer('📥 '+fichiers.length+' reçu'+(fichiers.length>1?'s':'')+' partagé'+(fichiers.length>1?'s':'')+' : touche comment tu as payé (Espèces ou Virement) et l\'envoi part tout seul.');return;}
   await envoyerPartages(e);
 }
 async function envoyerPartages(e){

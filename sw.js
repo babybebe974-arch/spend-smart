@@ -1,7 +1,7 @@
 // Service worker — Spend Smart
 // Page : réseau d'abord, cache en secours. Les appels Apps Script ne sont jamais mis en cache.
 // « Partager → Spend Smart » (WhatsApp, Galerie) : les fichiers reçus sont gardés puis envoyés par la page.
-const CACHE = 'spendsmart-v3';
+const CACHE = 'spendsmart-v4';
 const PARTAGE = 'spendsmart-partage';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
