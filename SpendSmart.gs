@@ -294,7 +294,8 @@ function traiterDepuisWeb() {
 }
 
 // Photos envoyées depuis le téléphone : rangées dans « À traiter » puis lues tout de suite
-function recevoirPhotos(liste) {
+function recevoirPhotos(liste, paiement) {
+  const pay = normPaiement_(paiement);
   if (!liste || !liste.length) throw new Error('Aucune photo reçue');
   preparer_(false);
   const src = DriveApp.getFolderById(PropertiesService.getScriptProperties().getProperty('ID_A_TRAITER'));
@@ -302,7 +303,8 @@ function recevoirPhotos(liste) {
   liste.forEach((p, i) => {
     const mime = TYPES_OK.includes(p.mime) ? p.mime : 'image/jpeg';
     const ext = mime === 'application/pdf' ? '.pdf' : mime === 'image/png' ? '.png' : '.jpg';
-    src.createFile(Utilities.newBlob(Utilities.base64Decode(p.b64), mime, `photo_${horo}_${i + 1}${ext}`));
+    const f = src.createFile(Utilities.newBlob(Utilities.base64Decode(p.b64), mime, `photo_${horo}_${i + 1}${ext}`));
+    if (pay) f.setDescription('paiement:' + pay);      // choix fait dans l'app : prioritaire sur la lecture
   });
   return executer_('Android (photo)', CONFIG.DUREE_MAX_MS).msg;
 }
@@ -341,6 +343,8 @@ function executer_(source, dureeMax) {
         const blob = f.getBlob();
         if (blob.getBytes().length > 15 * 1024 * 1024) throw new Error('fichier trop lourd (>15 Mo)');
         const d = lireFacture_(blob, mime, cle);
+        const choix = /paiement:(\S+)/.exec(f.getDescription() || '');
+        if (choix) d.paiement = choix[1];
         const info = ajouterLigne_(sh, lignes, d, f);
         f.setName(nomPropre_(d, f.getName()));
         f.moveTo(dest);
@@ -629,7 +633,7 @@ function doPost(e) {
     const q = JSON.parse(e.postData.contents);
     const cle = PropertiesService.getScriptProperties().getProperty('SPEND_KEY');
     if (!cle || q.cle !== cle) throw new Error('Clé incorrecte : rouvre le lien d\'installation depuis la page Spend Smart.');
-    if (q.action === 'photos') r = { msg: recevoirPhotos(q.liste) };
+    if (q.action === 'photos') r = { msg: recevoirPhotos(q.liste, q.paiement) };
     else if (q.action === 'sansRecu') r = { msg: ajouterSansRecu(q.depense) };
     else if (q.action === 'traiter') r = { msg: traiterDepuisWeb() };
     else if (q.action === 'resume') r = resumeMois_();

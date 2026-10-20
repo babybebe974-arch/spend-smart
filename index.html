@@ -18,6 +18,13 @@
   header h1{font-size:21px;margin:0}
   header small{display:block;color:var(--gris);font-size:13px;font-weight:400}
   .grille{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .etape{font-size:14px;font-weight:650;color:var(--gris);margin:4px 0 8px}
+  .chips{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px;border-radius:14px;transition:box-shadow .2s}
+  .chips button{border:2px solid var(--filet);background:var(--carte);color:var(--texte);border-radius:12px;padding:10px 4px;
+    font:inherit;font-size:14px;font-weight:600;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px}
+  .chips button span{font-size:22px}
+  .chips button.on{border-color:var(--bleu);background:#E3ECF6;color:var(--bleu)}
+  .chips.alerte{box-shadow:0 0 0 3px var(--orange)}
   .tuile{border:0;border-radius:18px;padding:18px 12px;min-height:128px;display:flex;flex-direction:column;align-items:center;
          justify-content:center;gap:8px;font:inherit;font-size:16px;font-weight:650;color:#fff;cursor:pointer;text-align:center;line-height:1.25}
   .tuile .ico{font-size:36px;line-height:1}
@@ -53,10 +60,18 @@
   <h1>Spend Smart<small>Dépenses · Smartdesignforyou</small></h1>
 </header>
 
+<div class="etape">1. Payé par</div>
+<div class="chips" id="chips">
+  <button type="button" data-p="Espèces"><span>💵</span>Espèces</button>
+  <button type="button" data-p="Virement"><span>🏦</span>Virement</button>
+  <button type="button" data-p="Carte"><span>💳</span>Carte</button>
+  <button type="button" data-p="Juice"><span>📱</span>Juice</button>
+</div>
+<div class="etape">2. Le reçu</div>
 <div class="grille" id="grille">
   <button class="tuile t1" id="b1" onclick="ouvrir('fScan')"><span class="ico">📷</span>Scanner une facture</button>
   <button class="tuile t2" id="b2" onclick="ouvrir('fCapt')"><span class="ico">🖼️</span>Capture / photo de la galerie</button>
-  <button class="tuile t3" id="b3" onclick="afficher('pSans')"><span class="ico">✍️</span>Dépense sans reçu</button>
+  <button class="tuile t3" id="b3" onclick="if(exigePaie())afficher('pSans')"><span class="ico">✍️</span>Dépense sans reçu</button>
   <button class="tuile t4" id="b4" onclick="resume()"><span class="ico">📊</span>Mes dépenses du mois</button>
 </div>
 <input type="file" id="fScan" accept="image/*" capture="environment" hidden onchange="envoyerFichiers(this.files,'b1');this.value=''">
@@ -70,7 +85,6 @@
   <label for="fournisseur">Fournisseur / lieu</label><input id="fournisseur" placeholder="ex. Parking Port-Louis">
   <label for="description">Description *</label><input id="description" placeholder="ex. Parking livraison client">
   <label for="categorie">Catégorie</label><select id="categorie"></select>
-  <label for="paiement">Payé par</label><select id="paiement"><option>Espèces</option><option>Carte</option><option>Juice</option><option>Virement</option></select>
   <label for="montant">Montant payé (Rs) *</label><input id="montant" type="number" inputmode="decimal" step="0.01" min="0">
   <button class="btn orange" id="bA" onclick="ajouter()">Ajouter la dépense</button>
 </div>
@@ -120,7 +134,17 @@ function occupe(id,oui,txt){var b=document.getElementById(id);if(!b)return;
   else{b.disabled=false;if(b.dataset.html)b.innerHTML=b.dataset.html;}}
 function afficher(id){['pSans','pResume'].forEach(function(p){document.getElementById(p).style.display=p===id?'block':'none';});
   var el=document.getElementById(id);el.style.display='block';el.scrollIntoView({behavior:'smooth',block:'start'});}
+// Mode de paiement : à choisir avant chaque reçu
+var PAIE='',ENATTENTE=null;
+function choisirPaie(p){PAIE=p;[].forEach.call(document.querySelectorAll('#chips button'),function(b){b.classList.toggle('on',b.dataset.p===p);});
+  document.getElementById('chips').classList.remove('alerte');
+  if(ENATTENTE){var e=ENATTENTE;ENATTENTE=null;envoyerPartages(e);}}
+function remettrePaie(){PAIE='';[].forEach.call(document.querySelectorAll('#chips button'),function(b){b.classList.remove('on');});}
+function exigePaie(){if(PAIE)return true;var c=document.getElementById('chips');c.classList.add('alerte');
+  c.scrollIntoView({behavior:'smooth',block:'center'});montrer('👆 Choisis d\'abord comment tu as payé : Espèces, Virement, Carte ou Juice.');return false;}
+[].forEach.call(document.querySelectorAll('#chips button'),function(b){b.addEventListener('click',function(){choisirPaie(b.dataset.p);});});
 function ouvrir(id){if(!configure()){afficher('config');document.getElementById('config').style.display='block';return;}
+  if(!exigePaie())return;
   document.getElementById(id).click();}
 
 async function appel(action,donnees){
@@ -158,17 +182,18 @@ async function envoyerFichiers(liste,bouton){
   montrer('⏳ Envoi et lecture en cours (environ 10 s par reçu)…');
   try{
     var l=await Promise.all(fs.map(lire));
-    var j=await appel('photos',{liste:l});
-    montrer(j.msg);return true;
+    var j=await appel('photos',{liste:l,paiement:PAIE});
+    montrer('Payé par '+PAIE+'\n'+j.msg);remettrePaie();return true;
   }catch(e){montrer('⚠️ '+e.message);return false;}
   finally{occupe(bouton,false);}
 }
 
 async function ajouter(){
-  var o={date:v('date'),fournisseur:v('fournisseur'),description:v('description'),categorie:v('categorie'),paiement:v('paiement'),montant:v('montant')};
+  if(!exigePaie())return;
+  var o={date:v('date'),fournisseur:v('fournisseur'),description:v('description'),categorie:v('categorie'),paiement:PAIE,montant:v('montant')};
   if(!o.description||!o.montant){montrer('Remplis au moins la description et le montant.');return;}
   occupe('bA',true,'Ajout…');
-  try{var j=await appel('sansRecu',{depense:o});montrer(j.msg);
+  try{var j=await appel('sansRecu',{depense:o});montrer(j.msg);remettrePaie();
     ['fournisseur','description','montant'].forEach(function(id){document.getElementById(id).value='';});}
   catch(e){montrer('⚠️ '+e.message);}
   finally{occupe('bA',false);}
@@ -219,8 +244,14 @@ async function partagesEnAttente(){
   for(var i=0;i<cles.length;i++){var r=await c.match(cles[i]);var b=await r.blob();
     fichiers.push(new File([b],decodeURIComponent(r.headers.get('X-Nom')||'photo'),{type:b.type||r.headers.get('Content-Type')}));}
   if(!configure()){montrer('📥 '+fichiers.length+' fichier(s) reçu(s), mais l\'app n\'est pas encore configurée.');document.getElementById('config').style.display='block';return;}
-  var ok=await envoyerFichiers(fichiers,'b2');
-  if(ok)for(var k=0;k<cles.length;k++)await c.delete(cles[k]);
+  var e={fichiers:fichiers,cles:cles,cache:c};
+  if(!PAIE){ENATTENTE=e;document.getElementById('chips').classList.add('alerte');
+    montrer('📥 '+fichiers.length+' reçu'+(fichiers.length>1?'s':'')+' partagé'+(fichiers.length>1?'s':'')+' : touche comment tu as payé (Espèces, Virement, Carte ou Juice) et l\'envoi part tout seul.');return;}
+  await envoyerPartages(e);
+}
+async function envoyerPartages(e){
+  var ok=await envoyerFichiers(e.fichiers,'b2');
+  if(ok)for(var k=0;k<e.cles.length;k++)await e.cache.delete(e.cles[k]);
 }
 
 if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(function(){});}
